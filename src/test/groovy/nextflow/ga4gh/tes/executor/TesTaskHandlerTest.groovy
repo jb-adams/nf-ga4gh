@@ -18,6 +18,7 @@ package nextflow.ga4gh.tes.executor
 
 import nextflow.ga4gh.tes.client.api.TaskServiceApi
 import nextflow.ga4gh.tes.client.model.TesCreateTaskResponse
+import nextflow.ga4gh.tes.client.model.TesFileType
 import nextflow.ga4gh.tes.client.model.TesTask
 import nextflow.processor.TaskStatus
 
@@ -101,6 +102,39 @@ class TesTaskHandlerTest extends Specification {
         then:
         1 * executor.getTags() >> [env: 'prod', team: 'bio']
         t.getTags() == [env: 'prod', team: 'bio']
+    }
+
+    def 'should copy back the env file only when the task has env or eval outputs'() {
+        given:
+        def executor = Mock(TesExecutor)
+        def task = Mock(TaskRun) {
+            getInputFilesMap() >> [:]
+            getOutputFilesNames() >> []
+            getOutputsByType(_) >> [:]
+            getOutputEnvNames() >> ENV_NAMES
+            getOutputEvals() >> EVALS
+        }
+        task.getName() >> 'tes-task'
+        task.getWorkDir() >> Paths.get('/some/work/dir')
+        task.getConfig() >> new TaskConfig()
+        task.getContainer() >> 'foo'
+        def handler = new TesTaskHandler(task, executor)
+
+        when:
+        def t = handler.newTesTask()
+        def envOutputs = t.getOutputs().findAll { it.path == '/work/.command.env' }
+
+        then:
+        envOutputs.size() == (EXPECTED ? 1 : 0)
+        !EXPECTED || envOutputs[0].url == Paths.get('/some/work/dir/.command.env').toUriString()
+        !EXPECTED || envOutputs[0].type == TesFileType.FILE
+
+        where:
+        ENV_NAMES   | EVALS                                 | EXPECTED
+        []          | [:]                                   | false
+        ['FOO']     | [:]                                   | true
+        []          | [nxf_out_eval_1: 'bash --version']    | true
+        ['FOO']     | [nxf_out_eval_1: 'bash --version']    | true
     }
 
     def 'should submit job' () {

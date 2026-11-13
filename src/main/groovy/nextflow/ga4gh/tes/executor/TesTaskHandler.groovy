@@ -249,6 +249,10 @@ class TesTaskHandler extends TaskHandler {
         body.addOutputsItem(outItem(errorFile.name, 'FILE'))
         body.addOutputsItem(outItem(logFile.name, 'FILE'))
         body.addOutputsItem(outItem(exitFile.name, 'FILE'))
+        // `env` and `eval` outputs are written by the task wrapper to .command.env, which
+        // must be copied back as well, otherwise Nextflow cannot collect them
+        if( task.getOutputEnvNames() || task.getOutputEvals() )
+            body.addOutputsItem(outItem(TaskRun.CMD_ENV, 'FILE'))
 
         // set requested resources
         body.setResources(getResources(task.config))

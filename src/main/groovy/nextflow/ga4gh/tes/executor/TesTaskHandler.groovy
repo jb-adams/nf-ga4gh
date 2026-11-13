@@ -103,11 +103,71 @@ class TesTaskHandler extends TaskHandler {
 
     protected String getRequestId() { requestId }
 
+    /**
+     * When the current run of consecutive transient status-request failures began, or {@code null} if the last
+     * status request worked
+     */
+    private Long pollErrorsSinceMillis
+
+    /**
+     * Gets the task's status from the TES server. A transient failure (the server unreachable, or answering with a
+     * 5xx status) returns {@code null}, meaning "no change yet", so the next poll tries again; only failures lasting
+     * longer than {@code tes.pollErrorTimeout} fail the task. Without this, a TES server restart aborted the whole
+     * workflow on the first failed poll
+     */
+    protected TesTask getTaskStatus() {
+        try {
+            final response = client.getTask(requestId, null)
+            if( pollErrorsSinceMillis != null ) {
+                log.info "[TES] Status requests for task > $task.name work again"
+                pollErrorsSinceMillis = null
+            }
+            return response
+        }
+        catch( Exception e ) {
+            if( !isTransientError(e) )
+                throw e
+            final now = System.currentTimeMillis()
+            final timeout = executor.getPollErrorTimeout()
+            final cause = e.message ?: e.class.simpleName
+            if( pollErrorsSinceMillis == null ) {
+                // warn once per run of failures, rather than on every poll
+                pollErrorsSinceMillis = now
+                log.warn "[TES] Could not get the status of task > $task.name; retrying on each poll for up to $timeout -- cause: $cause"
+            }
+            else if( now - pollErrorsSinceMillis > timeout.toMillis() ) {
+                log.warn "[TES] Status requests for task > $task.name have failed for longer than $timeout; giving up -- cause: $cause"
+                throw e
+            }
+            else {
+                log.debug "[TES] Could not get the status of task > $task.name; retrying on the next poll -- cause: $cause"
+            }
+            return null
+        }
+    }
+
+    /**
+     * A failure worth retrying: no response at all (connection refused, timeout) or a 5xx status
+     */
+    static boolean isTransientError(Throwable error) {
+        for( Throwable cause = error; cause != null; cause = cause.cause ) {
+            if( cause instanceof ApiException ) {
+                final code = ((ApiException) cause).code
+                return code == 0 || code >= 500
+            }
+            if( cause instanceof IOException )
+                return true
+        }
+        return false
+    }
+
     @Override
     boolean checkIfRunning() {
 
         if( requestId && isSubmitted() ) {
-            final response = client.getTask(requestId, null)
+            final response = getTaskStatus()
+            if( response == null )
+                return false
             final started = response.state in STARTED_STATUSES
             if( started ) {
                 log.trace "[TES] Task started > $task.name"
@@ -125,7 +185,9 @@ class TesTaskHandler extends TaskHandler {
             return false
         }
 
-        final response = client.getTask(requestId, null)
+        final response = getTaskStatus()
+        if( response == null )
+            return false
         normalizeTaskUrls(response)
         if( response.state in COMPLETE_STATUSES ) {
             // finalize the task

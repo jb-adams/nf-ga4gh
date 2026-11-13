@@ -54,6 +54,11 @@ tes {
     // Override the default task polling interval (5s)
     pollInterval = '10s'
 
+    // How long task status requests may keep failing with transient errors (the TES
+    // endpoint unreachable, or a 5xx response) before the task fails. Default 10m.
+    // Until then, each failed status request is retried on the next poll.
+    pollErrorTimeout = '15m'
+
     // TES task tags
     tags {
         tag1 = 'abc'

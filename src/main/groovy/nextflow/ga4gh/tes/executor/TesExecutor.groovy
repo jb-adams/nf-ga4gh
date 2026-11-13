@@ -201,6 +201,14 @@ class TesExecutor extends Executor implements ExtensionPoint {
         return tpm;
     }
 
+    /**
+     * How long task status requests may keep failing with transient errors before the task is failed
+     * (config `tes.pollErrorTimeout`, default 10 minutes)
+     */
+    Duration getPollErrorTimeout() {
+        return Duration.of(session.config.navigate('tes.pollErrorTimeout', '10m') as String)
+    }
+
     /*
      * Prepare and launch the task in the underlying execution platform
      */

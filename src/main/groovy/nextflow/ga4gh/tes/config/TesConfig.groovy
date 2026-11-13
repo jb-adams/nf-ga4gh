@@ -64,6 +64,14 @@ class TesConfig implements ConfigScope {
 
     @ConfigOption
     @Description('''
+    How long task status requests may keep failing with transient errors (the TES server unreachable, or answering
+    with a 5xx status) before the task is failed, for example `10m` (default). Until then, each failed request is
+    logged and retried on the next poll, so a TES server restart doesn't abort the workflow.
+    ''')
+    String pollErrorTimeout
+
+    @ConfigOption
+    @Description('''
     API key parameter mode: `query` or `header`.
     ''')
     String apiKeyParamMode
